@@ -7,12 +7,13 @@ edition = "2021"
 
 [dependencies]
 noodles-bgzf = { version = "0.20.0", features = ["libdeflate"]}
-noodles = { version = "0.35.0", features = ["vcf", "bcf", "csi"] }
+noodles = { version = "0.35.0", features = ["vcf", "bcf", "csi", "core"] }
 rayon = "1.7.0"
 itertools = "0.10.5"
 peroxide = "0.32.1"
 crossbeam = "0.8.2"
 polars = { version = "0.28.0", features = ["performant", "simd", "dtype-i8", "abs"] }
+clap = "4.2.1"
 
 [profile.release]
 lto = "fat"
