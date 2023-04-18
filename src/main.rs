@@ -17,6 +17,8 @@ use clap::{
     arg, 
     value_parser
 };
+use sync_file::SyncFile;
+
 
 
 fn cli() -> Command {
@@ -40,13 +42,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut index_r = File::open(index_path).map(csi::Reader::new)?;
     let index = index_r.read_index()?;
 
+    let f = SyncFile::open(in_path)?;
+
     let num_samples;
     let stringmaps: StringMaps;
     let header: Header;
 
     {
-        let f = File::open(in_path)?;
-        let mut bcf_r = bcf::Reader::new(f);
+        let mut bcf_r = bcf::Reader::new(f.clone());
 
         bcf_r.read_file_format()?;
         let r_header = bcf_r.read_header()?;
@@ -59,9 +62,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         num_samples = first_record.as_ref().unwrap().genotypes().len();
     }
 
-    let names_top = header.sample_names()
-                          .iter()
-                          .join("\t");
+    let names_top = "\t".to_string() + header.sample_names()
+                                            .iter()
+                                            .join("\t")
+                                            .as_str();
 
     println!("{names_top}");
 
@@ -73,8 +77,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let region = format!("{chrom}").parse().expect("failed to parse region");
 
-        let f = File::open("/gpfs0/scratch/mvc002/info_challenge.bcf").expect("failed to open file");
-        let mut bcf_r = bcf::Reader::new(f);
+        let mut bcf_r = bcf::Reader::new(f.clone());
 
         bcf_r.read_file_format().expect("failed to read format");
         let _r_header = bcf_r.read_header().expect("failed to read header");
@@ -115,10 +118,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         });
 
 
-        let data = samples.into_par_iter()
+        let data = samples.into_iter()
                 .map(|sample| {
-                    let sample = sample.into_iter();
-                    ChunkedArray::<Int8Type>::from_iter(sample)
+                    let chunked = sample.into_iter().collect();
+                    chunked
                 })
                 .collect::<Vec<ChunkedArray<Int8Type>>>();
         
@@ -140,7 +143,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     //preinitiallize matrix with 0.0 
     let mut matrix = (0_usize..num_samples).map(|_| repeat(0.0).take(num_samples).collect())
-                                 .collect::<Vec<Vec<f64>>>();
+                                            .collect::<Vec<Vec<f64>>>();
+
     
     //returns all combinations of all numbers in the sequence as tuples
     (0_usize..num_samples).tuple_combinations::<(usize, usize)>()
@@ -154,15 +158,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                             let num_compares = (data1.len() * 2) as f64;
 
                             let diff: f64 = (data1 - data2).abs().cast(&DataType::Float64).unwrap().sum().unwrap();
+
                             diff / num_compares
 
                         }).collect::<Vec<f64>>()
                         .into_iter()
                         .zip((0_usize..num_samples).tuple_combinations::<(usize, usize)>())
-                        .for_each(|(distance, (i, j))| {
+                        .for_each(|(avg, (i, j))| {
                             //store values in the matrix in both directions
-                            matrix[j][i] = distance;
-                            matrix[i][j] = distance;
+                            matrix[j][i] = avg;
+                            matrix[i][j] = avg;
+
                         });
 
     matrix.iter()
@@ -171,7 +177,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let line = line.iter()
                            .join("\t");
             println!("{samp_name}\t{line}");
-        });
+    });
+
 
     Ok(())
 }
